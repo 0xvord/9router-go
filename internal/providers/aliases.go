@@ -30,6 +30,7 @@ var ProviderAliasMap = map[string]string{
 	"ds":             "deepseek",
 	"el":             "elevenlabs",
 	"fal":            "fal-ai",
+	"fb":             "freebuff",
 	"fish":           "fish-audio",
 	"fl":             "featherless",
 	"fw":             "fireworks",

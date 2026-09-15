@@ -18,6 +18,8 @@ import (
 var CredentialFallbacks = map[string]string{
 	"ollama-search": "ollama",
 	"zai-search":    "glm",
+	"cline":         "clinepass",
+	"clinepass":     "cline",
 }
 var (
 	proxyClientsMu sync.RWMutex
@@ -216,6 +218,19 @@ func extractAPIKey(connData *ConnectionData) string {
 		return connData.APIKey
 	}
 	return connData.AccessToken
+}
+
+// NormalizeProviderToken normalizes credentials for providers with specific token requirements
+// (e.g. Cline OAuth tokens require workos: prefix, whereas API keys ride plain Bearer).
+func NormalizeProviderToken(provider, token string) string {
+	if (provider == "cline" || provider == "clinepass") && token != "" {
+		t := strings.TrimSpace(token)
+		if !strings.HasPrefix(t, "workos:") && !strings.HasPrefix(t, "sk_") {
+			return "workos:" + t
+		}
+		return t
+	}
+	return token
 }
 
 // GetClientForConnection returns an http.Client configured with ProxyPool transport if set.

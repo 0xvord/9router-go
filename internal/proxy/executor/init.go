@@ -66,6 +66,7 @@ func RegisterAll() {
 	Register("bazaarlink", func() Executor { return ForwardOpenAI })
 	Register("bluesminds", func() Executor { return ForwardOpenAI })
 	Register("devin-cli", func() Executor { return ForwardOpenAI })
+	Register("freebuff", func() Executor { return ForwardFreebuff })
 	Register("kilo-gateway", func() Executor { return ForwardOpenAI })
 	Register("llm7", func() Executor { return ForwardOpenAI })
 	Register("morph", func() Executor { return ForwardOpenAI })

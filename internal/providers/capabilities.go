@@ -363,7 +363,7 @@ func GetModelTokenLimits(model string) (contextWindow int, maxOutput int) {
 	m := strings.ToLower(model)
 
 	switch {
-	case strings.Contains(m, "deepseek-v4.1-flash"):
+	case strings.Contains(m, "deepseek-v4.1-flash") || strings.Contains(m, "deepseek-v4-flash"):
 		return 1000000, 128000
 	case strings.Contains(m, "gemini-1.5") || strings.Contains(m, "gemini-2.0") || strings.Contains(m, "gemini-2.5") || strings.Contains(m, "gemini-3") || strings.Contains(m, "glm-5.3-flash"):
 		return 1048576, 65536

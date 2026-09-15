@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -34,18 +35,39 @@ func SSECopy(w http.ResponseWriter, upstream io.Reader, flusher http.Flusher, on
 	// to the pool, and the pool would add a race window between ReleaseByteSlice
 	// and the next iteration's write/flush completing.
 	buf := make([]byte, 4096)
+	var tail [16]byte
+	tailLen := 0
 
 	for {
 		n, err := upstream.Read(buf)
 		if n > 0 {
+			chunk := buf[:n]
 			if onChunk != nil {
-				onChunk(buf[:n])
+				onChunk(chunk)
 			}
-			if _, werr := w.Write(buf[:n]); werr != nil {
+			if _, werr := w.Write(chunk); werr != nil {
 				return fmt.Errorf("write stream to client: %w", werr)
 			}
 			if flusher != nil {
 				flusher.Flush()
+			}
+
+			var checkBuf []byte
+			if tailLen > 0 {
+				checkBuf = append(tail[:tailLen], chunk...)
+			} else {
+				checkBuf = chunk
+			}
+			if bytes.Contains(checkBuf, []byte("[DONE]")) {
+				return nil
+			}
+
+			if n >= 16 {
+				copy(tail[:], chunk[n-16:])
+				tailLen = 16
+			} else {
+				copy(tail[:], chunk)
+				tailLen = n
 			}
 		}
 		if err != nil {

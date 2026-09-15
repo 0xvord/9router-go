@@ -77,6 +77,16 @@ func (b *ResponseBuf) Write(p []byte) (int, error) {
 func (b *ResponseBuf) String() string {
 	return string(b.buf)
 }
+// Len returns the number of captured bytes.
+func (b *ResponseBuf) Len() int {
+	return len(b.buf)
+}
+
+// Bytes returns the captured slice.
+func (b *ResponseBuf) Bytes() []byte {
+	return b.buf
+}
+
 
 // StreamMetrics captures timing and content during a proxied stream.
 type StreamMetrics struct {

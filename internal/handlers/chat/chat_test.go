@@ -638,6 +638,55 @@ func TestExtractAPIKey(t *testing.T) {
 		})
 	}
 }
+func TestNormalizeProviderToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		token    string
+		expected string
+	}{
+		{
+			name:     "Cline OAuth token gets workos prefix",
+			provider: "cline",
+			token:    "token_12345",
+			expected: "workos:token_12345",
+		},
+		{
+			name:     "Cline OAuth token already prefixed remains unchanged",
+			provider: "cline",
+			token:    "workos:token_12345",
+			expected: "workos:token_12345",
+		},
+		{
+			name:     "Cline API key sk_ remains plain",
+			provider: "cline",
+			token:    "sk_live_12345",
+			expected: "sk_live_12345",
+		},
+		{
+			name:     "Clinepass OAuth token gets workos prefix",
+			provider: "clinepass",
+			token:    "token_pass_123",
+			expected: "workos:token_pass_123",
+		},
+		{
+			name:     "Other provider token unchanged",
+			provider: "openai",
+			token:    "token_abc",
+			expected: "token_abc",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeProviderToken(tt.provider, tt.token)
+			if got != tt.expected {
+				t.Errorf("NormalizeProviderToken(%q, %q) = %q, want %q", tt.provider, tt.token, got, tt.expected)
+			}
+		})
+	}
+}
+
 
 func TestResolveProviderAlias(t *testing.T) {
 	tests := []struct {

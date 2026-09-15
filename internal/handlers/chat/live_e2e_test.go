@@ -53,6 +53,21 @@ func getRealUserDB(t *testing.T) (*db.Repo, func()) {
 			}
 		}
 	}
+	// Seed writable DB with real combos
+	cRows, err := roDB.Query("SELECT id, name, kind, models, createdAt, updatedAt FROM combos")
+	if err == nil {
+		defer cRows.Close()
+		for cRows.Next() {
+			var id, name, models, createdAt, updatedAt string
+			var kind sql.NullString
+			if err := cRows.Scan(&id, &name, &kind, &models, &createdAt, &updatedAt); err == nil {
+				_, _ = memDB.Exec(
+					"INSERT INTO combos (id, name, kind, models, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
+					id, name, kind, models, createdAt, updatedAt,
+				)
+			}
+		}
+	}
 
 	repo := db.NewRepo(memDB)
 	return repo, cleanup
@@ -253,6 +268,39 @@ func TestLiveE2E_DeepSeek_RealStream(t *testing.T) {
 		t.Errorf("expected SSE chunks and [DONE], got: %s", rec.Body.String())
 	}
 }
+func TestLiveE2E_Cline_SmartCombo(t *testing.T) {
+	repo, cleanup := getRealUserDB(t)
+	defer cleanup()
+
+	executor.RegisterAll()
+	handler := NewChatHandler(repo)
+
+	reqBody := `{
+		"model": "smart-combo",
+		"messages": [
+			{"role": "user", "content": "Say 'hello from smart combo'"}
+		],
+		"max_tokens": 50,
+		"stream": true
+	}`
+
+	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.HandleChatCompletions(rec, req)
+
+	t.Logf("SmartCombo stream response code: %d", rec.Code)
+	t.Logf("SmartCombo stream response body:\n%s", rec.Body.String())
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 from smart-combo, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "data:") || !strings.Contains(rec.Body.String(), "[DONE]") {
+		t.Errorf("expected SSE chunks and [DONE], got: %s", rec.Body.String())
+	}
+}
+
 
 func TestLiveE2E_Antigravity_MultiToolCall(t *testing.T) {
 	repo, cleanup := getRealUserDB(t)

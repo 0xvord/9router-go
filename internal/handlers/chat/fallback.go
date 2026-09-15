@@ -159,6 +159,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			log.Warn("fallback", "OAuth token refresh error", "conn", connectionID, "error", err)
 		}
 	}
+	apiKey = NormalizeProviderToken(provider, apiKey)
 
 	pipedBody := h.applyTokenSavers(body)
 	// Sanitize tool schemas for all OpenAI-compatible providers (opencode, gemini-openai, etc.)
@@ -235,8 +236,13 @@ func (h *ChatHandler) tryForwardWithConnection(
 	latencyMs := time.Since(start).Milliseconds()
 
 	// Lightweight request trace for /debug/traces (provider/model latency).
+	completed := fwdErr == nil
+	if !completed && isClientCanceled(ctx, fwdErr) && metrics != nil && metrics.ResponseBuf.Len() > 0 {
+		completed = true
+	}
+
 	status := "error"
-	if fwdErr == nil {
+	if completed {
 		status = strconv.Itoa(http.StatusOK)
 	} else if isClientCanceled(ctx, fwdErr) {
 		status = strconv.Itoa(StatusClientClosedRequest)
@@ -251,7 +257,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 		TTFTMs:     metrics.TTFT,
 	})
 
-	if fwdErr == nil {
+	if completed {
 		// Clear any existing model lock on success (matching Next.js clearAccountError)
 		if unlockErr := h.Repo.UnlockConnectionModel(connectionID, model); unlockErr != nil {
 			log.Warn("fallback", "unlock failed", "provider", provider, "model", model, "error", unlockErr)
@@ -268,6 +274,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 			Endpoint:     endpoint,
 		}
 		h.logUsage(logInfo, usage, latencyMs, body, metrics)
+		fwdErr = nil
 	} else {
 		var ue *upstreamError
 		statusCode := 0

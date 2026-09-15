@@ -33,6 +33,7 @@ func TestHandleModels_IncludesTokenLimits(t *testing.T) {
 		Data   []struct {
 			ID                  string `json:"id"`
 			ContextLength       *int   `json:"context_length"`
+			ContextWindow       *int   `json:"context_window"`
 			MaxCompletionTokens *int   `json:"max_completion_tokens"`
 		} `json:"data"`
 	}
@@ -51,6 +52,9 @@ func TestHandleModels_IncludesTokenLimits(t *testing.T) {
 			found = true
 			if m.ContextLength == nil || *m.ContextLength <= 0 {
 				t.Errorf("expected positive context_length for claude-sonnet-4-6, got %v", m.ContextLength)
+			}
+			if m.ContextWindow == nil || *m.ContextWindow <= 0 {
+				t.Errorf("expected positive context_window for claude-sonnet-4-6, got %v", m.ContextWindow)
 			}
 		}
 	}

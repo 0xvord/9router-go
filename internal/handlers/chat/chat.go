@@ -296,6 +296,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 		Created             int64  `json:"created"`
 		OwnedBy             string `json:"owned_by"`
 		ContextLength       int    `json:"context_length,omitempty"`
+		ContextWindow       int    `json:"context_window,omitempty"`
 		MaxCompletionTokens int    `json:"max_completion_tokens,omitempty"`
 	}
 
@@ -312,6 +313,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				Created:             now,
 				OwnedBy:             "system",
 				ContextLength:       ctxLen,
+				ContextWindow:       ctxLen,
 				MaxCompletionTokens: maxOut,
 			})
 		}
@@ -327,6 +329,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				Created:             now,
 				OwnedBy:             "system",
 				ContextLength:       ctxLen,
+				ContextWindow:       ctxLen,
 				MaxCompletionTokens: maxOut,
 			})
 		}
@@ -374,6 +377,7 @@ func (h *ChatHandler) HandleModels(w http.ResponseWriter, r *http.Request) {
 				Created:             now,
 				OwnedBy:             cm.ProviderAlias,
 				ContextLength:       ctxLen,
+				ContextWindow:       ctxLen,
 				MaxCompletionTokens: maxOut,
 			})
 			seen[fullModel] = true
@@ -413,6 +417,7 @@ func (h *ChatHandler) HandleModelsInfo(w http.ResponseWriter, r *http.Request) {
 		"owned_by":              modelInfo.Provider,
 		"endpoint":              "/v1/chat/completions",
 		"context_length":        ctxLen,
+		"context_window":        ctxLen,
 		"max_completion_tokens": maxOut,
 		"max_input_tokens":      ctxLen - maxOut,
 		"max_output_tokens":     maxOut,

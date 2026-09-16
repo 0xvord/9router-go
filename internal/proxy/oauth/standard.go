@@ -75,8 +75,9 @@ func doFormRefresh(ctx context.Context, client *http.Client, tokenURL string, va
 	}
 
 	return &TokenResult{
-		AccessToken: result.AccessToken,
-		ExpiresIn:   result.ExpiresIn,
-		Scope:       result.Scope,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    result.ExpiresIn,
+		Scope:        result.Scope,
 	}, nil
 }

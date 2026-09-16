@@ -3,15 +3,18 @@ package chat
 import (
 	json "encoding/json/v2"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"9router/proxy/internal/constants"
+	"9router/proxy/internal/db"
 	"9router/proxy/internal/log"
 	"9router/proxy/internal/models"
 	"9router/proxy/internal/providers"
 	internalproxy "9router/proxy/internal/proxy"
+	"9router/proxy/internal/translator"
 )
 
 // CredentialFallbacks maps search/tool providers to the primary chat provider whose API key can be reused.
@@ -88,6 +91,15 @@ func (h *ChatHandler) getBestConnection(provider string, connectionID string, ex
 			return nil, nil, fmt.Errorf("no active connections for provider: %s", provider)
 		}
 
+		// Apply provider connection routing strategy (round-robin, sticky, random) if configured
+		if len(connections) > 1 && h.Repo != nil {
+			if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil && settings.ProviderStrategies != nil {
+				if strat, ok := settings.ProviderStrategies[provider]; ok && strat.RotateStrategy != "" && strat.RotateStrategy != "none" {
+					connections = h.applyConnectionStrategy(provider, connections, strat)
+				}
+			}
+		}
+
 		excludeSet := make(map[string]bool, len(excludeIDs))
 		for _, id := range excludeIDs {
 			excludeSet[id] = true
@@ -100,8 +112,14 @@ func (h *ChatHandler) getBestConnection(provider string, connectionID string, ex
 			}
 			// Skip connections that have an active per-connection model lock
 			if model != "" {
-				if locked, _ := h.Repo.IsConnectionModelLocked(c.ID, model); locked {
+				lockKey := canonicalLockModel(provider, model)
+				if locked, _ := h.Repo.IsConnectionModelLocked(c.ID, lockKey); locked {
 					continue
+				}
+				if lockKey != model {
+					if locked, _ := h.Repo.IsConnectionModelLocked(c.ID, model); locked {
+						continue
+					}
 				}
 				if provider == "antigravity" && IsAntigravityModelBlocked(c.ID, model) {
 					continue
@@ -318,4 +336,103 @@ func (h *ChatHandler) getClientForConnection(connData *ConnectionData) *http.Cli
 	// For Edge Relays (vercel, cloudflare, deno), standard client is used because
 	// URL rewriting and x-relay headers are handled at request time.
 	return h.Client
+}
+
+// canonicalLockModel normalizes model names for providers sharing a backend
+// quota/capacity pool (such as Antigravity gemini-3.8-flash-low/high -> gemini-3.8-flash-tiered).
+func canonicalLockModel(provider, model string) string {
+	if model == "" {
+		return ""
+	}
+	if provider == "antigravity" {
+		return translator.NormalizeAntigravityModel(model)
+	}
+	return model
+}
+
+// ApplyConnectionStrategy rotates candidate connections according to the provider's configured strategy.
+func (h *ChatHandler) ApplyConnectionStrategy(provider string, conns []*models.ProviderConnection, strat db.ProviderStrategy) []*models.ProviderConnection {
+	return h.applyConnectionStrategy(provider, conns, strat)
+}
+
+func (h *ChatHandler) applyConnectionStrategy(provider string, conns []*models.ProviderConnection, strat db.ProviderStrategy) []*models.ProviderConnection {
+	if len(conns) <= 1 {
+		return conns
+	}
+
+	strategy := strings.ToLower(strings.TrimSpace(strat.RotateStrategy))
+	switch strategy {
+	case "round-robin", "roundrobin":
+		stickyLimit := 1
+		if strat.StickyLimit > 0 {
+			stickyLimit = strat.StickyLimit
+		}
+		return h.rotateConnectionsSticky(provider, conns, stickyLimit)
+
+	case "sticky":
+		stickyLimit := strat.StickyLimit
+		if stickyLimit <= 0 {
+			stickyLimit = 1
+		}
+		return h.rotateConnectionsSticky(provider, conns, stickyLimit)
+
+	case "random":
+		offset := rand.IntN(len(conns))
+		rotated := make([]*models.ProviderConnection, len(conns))
+		for i := range conns {
+			rotated[i] = conns[(offset+i)%len(conns)]
+		}
+		return rotated
+
+	default:
+		// "none", "fallback", or empty: keep DB priority order
+		return conns
+	}
+}
+
+func (h *ChatHandler) rotateConnectionsSticky(provider string, conns []*models.ProviderConnection, stickyLimit int) []*models.ProviderConnection {
+	h.stickyMu.Lock()
+	defer h.stickyMu.Unlock()
+	if h.stickyState == nil {
+		h.stickyState = make(map[string]*comboStickyState)
+	}
+
+	key := "conn:" + provider
+	state, exists := h.stickyState[key]
+	if !exists {
+		state = &comboStickyState{Index: 0, ConsecutiveUseCount: 0}
+		h.stickyState[key] = state
+	}
+
+	servingIndex := state.Index % len(conns)
+	state.ConsecutiveUseCount++
+	if state.ConsecutiveUseCount >= stickyLimit {
+		state.Index = (servingIndex + 1) % len(conns)
+		state.ConsecutiveUseCount = 0
+	}
+	state.ServingIndex = servingIndex
+
+	rotated := make([]*models.ProviderConnection, len(conns))
+	for i := range conns {
+		rotated[i] = conns[(servingIndex+i)%len(conns)]
+	}
+	return rotated
+}
+
+// ResetConnectionState clears rotation state for a provider (or all providers if provider="").
+func (h *ChatHandler) ResetConnectionState(provider string) {
+	h.stickyMu.Lock()
+	defer h.stickyMu.Unlock()
+	if h.stickyState == nil {
+		return
+	}
+	if provider == "" {
+		for k := range h.stickyState {
+			if strings.HasPrefix(k, "conn:") {
+				delete(h.stickyState, k)
+			}
+		}
+		return
+	}
+	delete(h.stickyState, "conn:"+provider)
 }

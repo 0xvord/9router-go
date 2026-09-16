@@ -62,7 +62,8 @@ func refreshXAI(ctx context.Context, p *Params) (*TokenResult, error) {
 	}
 
 	return &TokenResult{
-		AccessToken: result.AccessToken,
-		ExpiresIn:   result.ExpiresIn,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    result.ExpiresIn,
 	}, nil
 }

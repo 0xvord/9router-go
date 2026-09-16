@@ -91,12 +91,12 @@ var KnownOAuthConfigs = map[string]OAuthClientConfig{
 	"cline": {
 		ClientID:     envOr("CLINE_OAUTH_CLIENT_ID", ""),
 		ClientSecret: envOr("CLINE_OAUTH_CLIENT_SECRET", ""),
-		TokenURL:     "https://api.cline.bot/v1/auth/refresh",
+		TokenURL:     "https://api.cline.bot/api/v1/auth/refresh",
 	},
 	"clinepass": {
 		ClientID:     envOr("CLINE_OAUTH_CLIENT_ID", ""),
 		ClientSecret: envOr("CLINE_OAUTH_CLIENT_SECRET", ""),
-		TokenURL:     "https://api.cline.bot/v1/auth/refresh",
+		TokenURL:     "https://api.cline.bot/api/v1/auth/refresh",
 	},
 }
 

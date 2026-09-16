@@ -424,8 +424,13 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 				}
 				// Skip a connection that is already locked for this model
 				if connID != "" {
-					if locked, _ := h.Repo.IsConnectionModelLocked(connID, modelInfo.Model); locked {
-						log.Warn("combo", "skip locked connection", "provider", modelInfo.Provider, "model", modelInfo.Model, "conn", connID)
+					lockKey := canonicalLockModel(modelInfo.Provider, modelInfo.Model)
+					locked, _ := h.Repo.IsConnectionModelLocked(connID, lockKey)
+					if !locked && lockKey != modelInfo.Model {
+						locked, _ = h.Repo.IsConnectionModelLocked(connID, modelInfo.Model)
+					}
+					if locked {
+						log.Warn("combo", "skip locked connection", "provider", modelInfo.Provider, "model", modelInfo.Model, "lockKey", lockKey, "conn", connID)
 						excludeIDs = append(excludeIDs, connID)
 						continue
 					}
@@ -464,15 +469,8 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 							h.comboLockRetryable(&excludeIDs, connID, modelInfo.Provider, modelInfo.Model, ue)
 						}
 						if ue.StatusCode == http.StatusServiceUnavailable || ue.StatusCode == http.StatusBadGateway || ue.StatusCode == http.StatusGatewayTimeout {
-							errorText := extractErrorText(ue.Body)
-							classification := providers.ClassifyError(ue.StatusCode, errorText, 0)
-							if classification.CooldownMs > 0 && classification.CooldownMs <= 5000 {
-								cooldown := time.Duration(classification.CooldownMs) * time.Millisecond
-								log.Info("combo", "transient wait", "status", ue.StatusCode, "provider", modelInfo.Provider, "duration", cooldown)
-								time.Sleep(cooldown)
-							} else {
-								log.Info("combo", "transient skip", "status", ue.StatusCode, "provider", modelInfo.Provider, "cooldownMs", classification.CooldownMs)
-							}
+							// In combo loops, fail over immediately to the next connection/model without blocking the client turn
+							log.Info("combo", "transient failover skip", "status", ue.StatusCode, "provider", modelInfo.Provider, "conn", connID)
 						}
 						if ra := extractRetryAfter(ue.Body); ra != "" {
 							if earliestRetryAfter == "" || ra < earliestRetryAfter {
@@ -619,10 +617,14 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 					connID = conn.ID
 					connData = cData
 				}
-				// Skip a connection that is already locked for this model
 				if connID != "" {
-					if locked, _ := h.Repo.IsConnectionModelLocked(connID, modelInfo.Model); locked {
-						log.Warn("combo", "skip locked connection", "provider", modelInfo.Provider, "model", modelInfo.Model, "conn", connID)
+					lockKey := canonicalLockModel(modelInfo.Provider, modelInfo.Model)
+					locked, _ := h.Repo.IsConnectionModelLocked(connID, lockKey)
+					if !locked && lockKey != modelInfo.Model {
+						locked, _ = h.Repo.IsConnectionModelLocked(connID, modelInfo.Model)
+					}
+					if locked {
+						log.Warn("combo", "skip locked connection", "provider", modelInfo.Provider, "model", modelInfo.Model, "lockKey", lockKey, "conn", connID)
 						excludeIDs = append(excludeIDs, connID)
 						continue
 					}
@@ -632,7 +634,6 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 				for k, v := range translatedReq {
 					entryReq[k] = v
 				}
-
 				entryReq["model"] = modelInfo.Model
 
 				upstreamJSON, err := json.Marshal(entryReq)
@@ -653,15 +654,8 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 							h.comboLockRetryable(&excludeIDs, connID, modelInfo.Provider, modelInfo.Model, ue)
 						}
 						if ue.StatusCode == http.StatusServiceUnavailable || ue.StatusCode == http.StatusBadGateway || ue.StatusCode == http.StatusGatewayTimeout {
-							errorText := extractErrorText(ue.Body)
-							classification := providers.ClassifyError(ue.StatusCode, errorText, 0)
-							if classification.CooldownMs > 0 && classification.CooldownMs <= 5000 {
-								cooldown := time.Duration(classification.CooldownMs) * time.Millisecond
-								log.Info("combo", "transient wait", "status", ue.StatusCode, "provider", modelInfo.Provider, "duration", cooldown)
-								time.Sleep(cooldown)
-							} else {
-								log.Info("combo", "transient skip", "status", ue.StatusCode, "provider", modelInfo.Provider, "cooldownMs", classification.CooldownMs)
-							}
+							// In combo loops, fail over immediately to the next connection/model without blocking the client turn
+							log.Info("combo", "transient failover skip", "status", ue.StatusCode, "provider", modelInfo.Provider, "conn", connID)
 						}
 						if ra := extractRetryAfter(ue.Body); ra != "" {
 							if earliestRetryAfter == "" || ra < earliestRetryAfter {
@@ -787,11 +781,15 @@ func (h *ChatHandler) comboLockRetryable(excludeIDs *[]string, connID, provider,
 		return
 	}
 	cooldownSec := int((cls.CooldownMs + 999) / 1000)
-	if err := h.Repo.LockConnectionModel(connID, model, cooldownSec, cls.NewBackoffLevel); err != nil {
-		log.Warn("combo", "lock failed", "conn", connID, "provider", provider, "model", model, "error", err)
+	lockKey := canonicalLockModel(provider, model)
+	if err := h.Repo.LockConnectionModel(connID, lockKey, cooldownSec, cls.NewBackoffLevel); err != nil {
+		log.Warn("combo", "lock failed", "conn", connID, "provider", provider, "model", lockKey, "error", err)
+	}
+	if lockKey != model {
+		_ = h.Repo.LockConnectionModel(connID, model, cooldownSec, cls.NewBackoffLevel)
 	}
 	*excludeIDs = append(*excludeIDs, connID)
-	log.Warn("combo", "locked on retryable error", "provider", provider, "model", model, "conn", connID, "status", ue.StatusCode, "cooldown_s", cooldownSec)
+	log.Warn("combo", "locked on retryable error", "provider", provider, "model", model, "lockKey", lockKey, "conn", connID, "status", ue.StatusCode, "cooldown_s", cooldownSec)
 }
 
 // ---- Fusion (parallel fan-out + judge synthesis) ----

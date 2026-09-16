@@ -271,3 +271,57 @@ func TestHandleAccountFallback_NoConnections(t *testing.T) {
 		t.Fatal("expected error when provider has no connections")
 	}
 }
+
+func TestHandleAccountFallback_503CapacityLocksCanonicalModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{
+			"error": {
+				"code": 503,
+				"message": "No capacity available for model gemini-3.8-flash-tiered on the server",
+				"status": "UNAVAILABLE",
+				"details": [{"reason": "MODEL_CAPACITY_EXHAUSTED"}]
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	database, cleanup := setupChatTestDB(t)
+	defer cleanup()
+	agData, _ := json.Marshal(map[string]any{
+		"apiKey":      "tok-ag",
+		"accessToken": "tok-ag",
+		"baseUrl":     srv.URL,
+		"projectId":   "test-proj-503",
+		"providerSpecificData": map[string]any{
+			"projectId": "test-proj-503",
+		},
+	})
+	if _, err := database.Exec(`INSERT INTO providerConnections (id, provider, authType, name, priority, isActive, data, createdAt, updatedAt) VALUES ('conn-ag-cap', 'antigravity', 'oauth', 'AG Cap Test', 1, 1, ?, '2026-07-18T00:00:00Z', '2026-07-18T00:00:00Z')`, string(agData)); err != nil {
+		t.Fatalf("seed connection: %v", err)
+	}
+	repo := db.NewRepo(database)
+	h := NewChatHandler(repo)
+
+	body := []byte(`{"model":"gemini-3.8-flash-low","messages":[{"role":"user","content":"ping"}]}`)
+	rec := httptest.NewRecorder()
+	err := h.handleAccountFallback(context.Background(), rec, "antigravity", "gemini-3.8-flash-low", "", body, false, false, "/v1/chat/completions")
+	if err == nil {
+		t.Fatal("expected error after 503 capacity exhaustion")
+	}
+
+	// Canonical model "gemini-3.8-flash-tiered" must be locked
+	lockedCanonical, err := repo.IsConnectionModelLocked("conn-ag-cap", "gemini-3.8-flash-tiered")
+	if err != nil {
+		t.Fatalf("check canonical lock: %v", err)
+	}
+	if !lockedCanonical {
+		t.Error("expected canonical model gemini-3.8-flash-tiered to be locked on 503 capacity error")
+	}
+
+	// Best connection for gemini-3.8-flash-high must now skip this connection because canonical tiered is locked!
+	conn, _, _ := h.GetBestConnection("antigravity", "", nil, "gemini-3.8-flash-high")
+	if conn != nil {
+		t.Errorf("expected no connection available for high tier when canonical model is locked, got %s", conn.ID)
+	}
+}

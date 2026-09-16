@@ -64,9 +64,14 @@ func refreshClaude(ctx context.Context, p *Params) (*TokenResult, error) {
 		return nil, fmt.Errorf("claude empty access token")
 	}
 
+	refToken := result.RefreshToken
+	if refToken == "" {
+		refToken = p.RefreshToken
+	}
 	return &TokenResult{
-		AccessToken: result.AccessToken,
-		ExpiresIn:   result.ExpiresIn,
-		Scope:       result.Scope,
+		AccessToken:  result.AccessToken,
+		RefreshToken: refToken,
+		ExpiresIn:    result.ExpiresIn,
+		Scope:        result.Scope,
 	}, nil
 }

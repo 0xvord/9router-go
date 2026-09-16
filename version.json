@@ -1,5 +1,5 @@
 {
-  "latestVersion": "1.8.11",
+  "latestVersion": "1.8.12",
   "downloadUrl": "https://github.com/luqman-v1/9router-go/releases/latest",
-  "releaseNotes": "v1.8.11: Parity bug fixes from upstream decolua/9router (PR #3973 multiple system messages preservation in Gemini systemInstruction, PR #3981 Antigravity thinkingBudget maxOutputTokens guard & reasoning effort support, PR #3968 Claude document PDF block support to Gemini inlineData), client cancellation logging (status 499 & false upstream failure suppression), accurate gemini stream bytesWritten telemetry, HTTP status code constant refactor, proxy http.Transport connection pooling, TTL pruning for pendingJSON stream fragments, and net/http/pprof live profiling endpoints."
+  "releaseNotes": "v1.8.12: Freebuff executor with session caching and run tracking, Cline/Clinepass OAuth refresh overhaul (/api/v1/auth/refresh endpoint migration, CLI identity headers, token rotation, reactive 401 normalization), Zero-Sleep failover on transient combo errors, Canonical model locking for shared tier quotas (Antigravity tiered locks), provider connection routing strategies (sticky, round-robin, random), SSECopy [DONE] rolling tail keep-alive stall fix, completed stream usage history guarantees, and Solar Pro / LongCat capabilities."
 }

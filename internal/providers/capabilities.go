@@ -266,6 +266,8 @@ var patternCapabilities = []patternCapability{
 	{"*gpt-4*", Capabilities{Tools: true}},
 	{"*gpt-3.5*", Capabilities{Tools: true}},
 	{"*gpt-oss*", Capabilities{Reasoning: true, Tools: true}},
+	{"*solar-pro*", Capabilities{Reasoning: true, Tools: true}},
+	{"*longcat*", Capabilities{Reasoning: true, Tools: true}},
 
 	{"*o1-mini*", Capabilities{Reasoning: true, Tools: true}},
 	{"*o1*", Capabilities{Vision: true, Reasoning: true, Tools: true}},
@@ -375,6 +377,8 @@ func GetModelTokenLimits(model string) (contextWindow int, maxOutput int) {
 		return 200000, 8192
 	case strings.Contains(m, "gpt-4o") || strings.Contains(m, "gpt-4-turbo") || strings.Contains(m, "gpt-4.1") || strings.Contains(m, "gpt-5"):
 		return 128000, 16384
+	case strings.Contains(m, "solar-pro") || strings.Contains(m, "longcat"):
+		return 200000, 32000
 	case strings.Contains(m, "o1") || strings.Contains(m, "o3"):
 		return 200000, 100000
 	case strings.Contains(m, "deepseek") || strings.Contains(m, "qwen") || strings.Contains(m, "glm") || strings.Contains(m, "kimi"):

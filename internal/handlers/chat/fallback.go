@@ -62,6 +62,15 @@ func (h *ChatHandler) handleAccountFallback(
 		return fmt.Errorf("no active connections for provider: %s", provider)
 	}
 
+	// Apply provider connection routing strategy (round-robin, sticky, random) if configured
+	if len(allConns) > 1 && h.Repo != nil {
+		if settings, sErr := h.Repo.GetSettings(); sErr == nil && settings != nil && settings.ProviderStrategies != nil {
+			if strat, ok := settings.ProviderStrategies[provider]; ok && strat.RotateStrategy != "" && strat.RotateStrategy != "none" {
+				allConns = h.applyConnectionStrategy(provider, allConns, strat)
+			}
+		}
+	}
+
 	var excludeIDs []string
 	var lastErr error
 	for _, c := range allConns {
@@ -100,8 +109,12 @@ func (h *ChatHandler) handleAccountFallback(
 			if errMsg == "" {
 				errMsg = fmt.Sprintf("%d upstream error", ue.StatusCode)
 			}
-			h.Repo.LockConnectionModel(connObj.ID, model, cooldownSec, classification.NewBackoffLevel)
-			log.Warn("fallback", "connection locked", "conn", connObj.ID, "provider", provider, "model", model, "status", ue.StatusCode, "cooldown_s", cooldownSec)
+			lockKey := canonicalLockModel(provider, model)
+			h.Repo.LockConnectionModel(connObj.ID, lockKey, cooldownSec, classification.NewBackoffLevel)
+			if lockKey != model {
+				_ = h.Repo.LockConnectionModel(connObj.ID, model, cooldownSec, classification.NewBackoffLevel)
+			}
+			log.Warn("fallback", "connection locked", "conn", connObj.ID, "provider", provider, "model", model, "lockKey", lockKey, "status", ue.StatusCode, "cooldown_s", cooldownSec)
 			excludeIDs = append(excludeIDs, c.ID)
 			continue
 		}
@@ -209,7 +222,7 @@ func (h *ChatHandler) tryForwardWithConnection(
 		refreshedKey, _, rErr := h.forceRefreshOAuthToken(connectionID)
 		if rErr == nil && refreshedKey != "" && refreshedKey != apiKey {
 			log.Info("fallback", "reactive 401 token refresh success, retrying request", "conn", connectionID)
-			apiKey = refreshedKey
+			apiKey = NormalizeProviderToken(provider, refreshedKey)
 			if exec := executor.Get(provider); exec != nil {
 				fwdErr = exec(w, &executor.Request{
 					Ctx:           ctx,
@@ -259,8 +272,12 @@ func (h *ChatHandler) tryForwardWithConnection(
 
 	if completed {
 		// Clear any existing model lock on success (matching Next.js clearAccountError)
-		if unlockErr := h.Repo.UnlockConnectionModel(connectionID, model); unlockErr != nil {
-			log.Warn("fallback", "unlock failed", "provider", provider, "model", model, "error", unlockErr)
+		lockKey := canonicalLockModel(provider, model)
+		if unlockErr := h.Repo.UnlockConnectionModel(connectionID, lockKey); unlockErr != nil {
+			log.Warn("fallback", "unlock failed", "provider", provider, "model", lockKey, "error", unlockErr)
+		}
+		if lockKey != model {
+			_ = h.Repo.UnlockConnectionModel(connectionID, model)
 		}
 		usage := translator.GetAndClearUsage(ctx)
 		if usage == nil {
@@ -344,10 +361,31 @@ func extractErrorText(body []byte) string {
 	var parsed struct {
 		Error struct {
 			Message string `json:"message"`
+			Status  string `json:"status"`
+			Details []struct {
+				Reason string `json:"reason"`
+			} `json:"details"`
 		} `json:"error"`
+		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
-		return parsed.Error.Message
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		var parts []string
+		if parsed.Error.Message != "" {
+			parts = append(parts, parsed.Error.Message)
+		} else if parsed.Message != "" {
+			parts = append(parts, parsed.Message)
+		}
+		if parsed.Error.Status != "" {
+			parts = append(parts, parsed.Error.Status)
+		}
+		for _, d := range parsed.Error.Details {
+			if d.Reason != "" {
+				parts = append(parts, d.Reason)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
 	}
 	return ""
 }

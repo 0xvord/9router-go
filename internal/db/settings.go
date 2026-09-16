@@ -9,7 +9,8 @@ import (
 // ProviderStrategy defines routing and proxy pool options for a specific provider.
 type ProviderStrategy struct {
 	ProxyPoolID    string `json:"proxyPoolId"`
-	RotateStrategy string `json:"rotateStrategy"` // "none", "round-robin", "random"
+	RotateStrategy string `json:"rotateStrategy"` // "none", "round-robin", "random", "sticky"
+	StickyLimit    int    `json:"stickyLimit,omitempty"`
 }
 
 // SettingsData represents token saver and general settings stored in the settings table.
@@ -90,10 +91,14 @@ func (r *Repo) GetSettings() (*SettingsData, error) {
 		s.ProviderStrategies = make(map[string]ProviderStrategy)
 		for k, v := range ps {
 			if vm, ok := v.(map[string]any); ok {
-				s.ProviderStrategies[k] = ProviderStrategy{
+				strat := ProviderStrategy{
 					ProxyPoolID:    handlerutil.GetString(vm, "proxyPoolId"),
 					RotateStrategy: handlerutil.GetString(vm, "rotateStrategy"),
 				}
+				if sl, ok := vm["stickyLimit"].(float64); ok && sl > 0 {
+					strat.StickyLimit = int(sl)
+				}
+				s.ProviderStrategies[k] = strat
 			}
 		}
 	}
@@ -108,6 +113,24 @@ func (r *Repo) SetAutoUpdate(enabled bool) error {
 		s = DefaultSettings()
 	}
 	s.AutoUpdate = enabled
+	b, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, string(b))
+	return err
+}
+
+// SetProviderStrategy updates or sets the routing strategy and proxy pool for a provider.
+func (r *Repo) SetProviderStrategy(provider string, strat ProviderStrategy) error {
+	s, err := r.GetSettings()
+	if err != nil {
+		s = DefaultSettings()
+	}
+	if s.ProviderStrategies == nil {
+		s.ProviderStrategies = make(map[string]ProviderStrategy)
+	}
+	s.ProviderStrategies[provider] = strat
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err

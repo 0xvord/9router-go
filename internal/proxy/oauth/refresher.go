@@ -11,10 +11,11 @@ import (
 
 // TokenResult holds the result of a token refresh.
 type TokenResult struct {
-	AccessToken string
-	ExpiresIn   int // seconds
-	Scope       string
-	ProjectID   string // provider-specific extra field
+	AccessToken  string
+	RefreshToken string
+	ExpiresIn    int // seconds
+	Scope        string
+	ProjectID    string // provider-specific extra field
 }
 
 // Params holds all inputs for a refresh call.

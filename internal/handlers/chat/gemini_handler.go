@@ -286,6 +286,9 @@ func (h *ChatHandler) forceRefreshOAuthToken(connectionID string) (string, strin
 				existing = make(map[string]interface{})
 			}
 			existing["accessToken"] = result.AccessToken
+			if result.RefreshToken != "" {
+				existing["refreshToken"] = result.RefreshToken
+			}
 			if result.ProjectID != "" {
 				existing["projectId"] = result.ProjectID
 			}

@@ -46,6 +46,10 @@ var ErrorRules = []ErrorRule{
 	{Text: "quota exceeded",              Backoff: true},
 	{Text: "capacity",                    Backoff: true},
 	{Text: "overloaded",                  Backoff: true},
+	{Text: "resource_exhausted",          Backoff: true},
+	{Text: "resource has been exhausted", Backoff: true},
+	{Text: "model_capacity_exhausted",    Backoff: true},
+	{Text: "server is temporarily unavailable", Backoff: true},
 
 	// --- Status-based rules (fallback when text doesn't match) ---
 	{Status: 401, CooldownMs: cooldownLong},
@@ -53,8 +57,10 @@ var ErrorRules = []ErrorRule{
 	{Status: 403, CooldownMs: cooldownLong},
 	{Status: 404, CooldownMs: cooldownLong},
 	{Status: 429, Backoff: true},
+	{Status: 502, Backoff: true},
+	{Status: 503, Backoff: true},
+	{Status: 504, Backoff: true},
 }
-
 // GetQuotaCooldown calculates exponential backoff cooldown for rate limits.
 // Level 0 → 2s, Level 1 → 2s, Level 2 → 4s, Level 3 → 8s, ... capped at MaxMs.
 func GetQuotaCooldown(backoffLevel int) int {

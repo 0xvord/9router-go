@@ -81,7 +81,6 @@ var ProviderAliasMap = map[string]string{
 	"af":             "api-airforce",
 	"bzl":            "bazaarlink",
 	"bm":             "bluesminds",
-	"cbcn":           "codebuddy-cn",
 	"dv":             "devin-cli",
 	"hunyuan":        "tencent",
 	"kgw":            "kilo-gateway",

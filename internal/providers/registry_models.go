@@ -146,6 +146,18 @@ func GetProviderModels(aliasOrID string) []string {
 		if models, ok := ProviderModels[canon]; ok {
 			return models
 		}
+		// Registry may key by CATALOG alias (e.g. "cbcn") not canonical id
+		if emit, ok := CatalogEmitAlias[canon]; ok {
+			if models, ok := ProviderModels[emit]; ok {
+				return models
+			}
+		}
+	}
+	// Reverse: input is canonical id, registry keyed by catalog alias
+	if emit, ok := CatalogEmitAlias[aliasOrID]; ok {
+		if models, ok := ProviderModels[emit]; ok {
+			return models
+		}
 	}
 	return nil
 }

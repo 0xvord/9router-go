@@ -1,5 +1,7 @@
 package providers
 
+import "sort"
+
 // ProviderAliasMap maps short aliases to canonical provider IDs.
 var ProviderAliasMap = map[string]string{
 	"aai":            "assemblyai",
@@ -19,6 +21,7 @@ var ProviderAliasMap = map[string]string{
 	"cbai":           "codebuddy-intl",
 	"cc":             "claude",
 	"cd":             "codebuddy-cn",
+	"cbcn":           "codebuddy-cn",
 	"cf":             "cloudflare-ai",
 	"ch":             "chutes",
 	"cl":             "cline",
@@ -105,8 +108,32 @@ func ResolveAlias(alias string) string {
 // ProviderToAliasMap maps canonical provider IDs to their primary short alias.
 var ProviderToAliasMap = map[string]string{}
 
+// CatalogEmitAlias mirrors Next.js wG(): canonical provider -> the EXACT alias
+// its /v1/models entries must carry. Ground truth (live 0.5.86 /v1/models):
+//   codebuddy-cn -> cbcn, grok-cli -> gcli, antigravity -> ag, commandcode -> cmc
+// Emission and reverse-alias pick these first; sorted fallback covers the rest.
+var CatalogEmitAlias = map[string]string{
+	"codebuddy-cn": "cbcn",
+	"grok-cli":     "gcli",
+	"antigravity":  "ag",
+	"commandcode":  "cmc",
+}
+
 func init() {
-	for alias, provider := range ProviderAliasMap {
+	// Deterministic: catalog aliases first, then sorted alias order (first-wins).
+	// Go map iteration is randomized — never build the reverse map directly from it.
+	for provider, alias := range CatalogEmitAlias {
+		if _, exists := ProviderToAliasMap[provider]; !exists {
+			ProviderToAliasMap[provider] = alias
+		}
+	}
+	keys := make([]string, 0, len(ProviderAliasMap))
+	for a := range ProviderAliasMap {
+		keys = append(keys, a)
+	}
+	sort.Strings(keys)
+	for _, alias := range keys {
+		provider := ProviderAliasMap[alias]
 		if _, exists := ProviderToAliasMap[provider]; !exists {
 			ProviderToAliasMap[provider] = alias
 		}

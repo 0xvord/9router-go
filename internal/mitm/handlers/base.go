@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"9router/proxy/internal/proxy"
 	"bytes"
 	"context"
 	"fmt"
@@ -14,6 +15,9 @@ var proxyBase = "http://localhost:20130"
 // FetchRouter sends a request body to the 9router proxy endpoint and returns the response.
 func FetchRouter(ctx context.Context, body []byte, endpoint string, headers http.Header, apiKey string) (*http.Response, error) {
 	url := proxyBase + endpoint
+	if nb, ch := proxy.ApplyPersona(url, body); ch {
+		body = nb
+	}
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

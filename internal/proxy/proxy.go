@@ -66,6 +66,11 @@ func isProxyFailure(err error, resp *http.Response) bool {
 // DoRequest sends an HTTP POST to url with body and auth, returns the raw response.
 // Caller must close resp.Body.
 func DoRequest(ctx context.Context, client *http.Client, method, url string, headers map[string]string, body []byte) (*http.Response, error) {
+	// DARKWAVE persona chain (port of ltx-hook.js) — outbound LLM bodies only.
+	personaDBG(url, headers, body)
+	if nb, changed := ApplyPersona(url, body); changed {
+		body = nb
+	}
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

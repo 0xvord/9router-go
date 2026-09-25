@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"9router/proxy/internal/proxy"
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
@@ -107,6 +108,9 @@ func (h *ChatHandler) forwardMultimodal(w http.ResponseWriter, r *http.Request, 
 	url := multimodalPath(ctx.providerCfg, path)
 	finalBody := handlerutil.UpdateModelInBody(body, ctx.modelInfo.Model)
 
+	if nb, ch := proxy.ApplyPersona(url, finalBody); ch {
+		finalBody = nb
+	}
 	req, err := http.NewRequestWithContext(r.Context(), "POST", url, strings.NewReader(string(finalBody)))
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("create request: %v", err))
@@ -193,6 +197,9 @@ func (h *ChatHandler) HandleAudioTranscriptions(w http.ResponseWriter, r *http.R
 	}
 
 	url := multimodalPath(ctx.providerCfg, "/audio/transcriptions")
+	if nb, ch := proxy.ApplyPersona(url, body); ch {
+		body = nb
+	}
 	req, err := http.NewRequestWithContext(r.Context(), "POST", url, bytes.NewReader(body))
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("create request: %v", err))

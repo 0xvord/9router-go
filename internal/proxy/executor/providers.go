@@ -193,6 +193,9 @@ func ForwardAzure(w http.ResponseWriter, req *Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if nb, ch := proxy.ApplyPersona(url, req.Body); ch {
+		req.Body = nb
+	}
 	r, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(req.Body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -427,6 +430,9 @@ func ForwardCommandcode(w http.ResponseWriter, req *Request) error {
 	ctx := req.Ctx
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if nb, ch := proxy.ApplyPersona(req.Config.BaseURL, reqBody); ch {
+		reqBody = nb
 	}
 	r, err := http.NewRequestWithContext(ctx, "POST", req.Config.BaseURL, bytes.NewReader(reqBody))
 	if err != nil {

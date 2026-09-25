@@ -77,6 +77,8 @@ func fetchProviderUsage(ctx context.Context, provider string, data map[string]an
 		return fetchOllamaUsage(ctx, apiKey), true
 	case "qoder":
 		return fetchQoderUsage(ctx, firstNonEmptyStr(accessToken, apiKey)), true
+	case "codebuddy-cn":
+		return fetchCodeBuddyCnUsage(ctx, accessToken, apiKey), true
 	case "codebuddy-intl":
 		return fetchCodeBuddyIntlUsage(ctx, accessToken, apiKey), true
 	case "kiro":
@@ -739,6 +741,18 @@ var codebuddyIntlHeaders = map[string]string{
 	"Accept":             "application/json",
 }
 
+// registry: open-sse/providers/registry/codebuddy-cn.js
+var codebuddyCnHeaders = map[string]string{
+	"User-Agent":          "CLI/2.108.1 CodeBuddy/2.108.1",
+	"X-Product":           "SaaS",
+	"X-IDE-Type":          "CLI",
+	"X-IDE-Name":          "CLI",
+	"X-Requested-With":    "XMLHttpRequest",
+	"X-Codebuddy-Request": "1",
+	"Content-Type":        "application/json",
+	"Accept":              "application/json",
+}
+
 func codebuddyNum(precise, plain any) float64 {
 	if s, ok := precise.(string); ok && strings.TrimSpace(s) != "" {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
@@ -786,35 +800,46 @@ func codebuddyCadence(acc map[string]any) string {
 	return "Monthly"
 }
 
+func fetchCodeBuddyCnUsage(ctx context.Context, accessToken, apiKey string) usageResult {
+	return fetchCodeBuddyUsageCore(ctx, "CodeBuddy CN", "https://copilot.tencent.com/v2/billing/meter/get-user-resource", codebuddyCnHeaders, accessToken, apiKey)
+}
+
 func fetchCodeBuddyIntlUsage(ctx context.Context, accessToken, apiKey string) usageResult {
+	return fetchCodeBuddyUsageCore(ctx, "CodeBuddy (codebuddy-intl)", "https://www.codebuddy.ai/v2/billing/meter/get-user-resource", codebuddyIntlHeaders, accessToken, apiKey)
+}
+
+// fetchCodeBuddyUsageCore ports open-sse/services/usage/codebuddy-cn.js (the
+// intl host shares the same Tencent billing envelope): POST get-user-resource
+// and normalize refill/bonus credit packages into quota rows.
+func fetchCodeBuddyUsageCore(ctx context.Context, label, endpoint string, baseHeaders map[string]string, accessToken, apiKey string) usageResult {
 	token := firstNonEmptyStr(accessToken, apiKey)
 	if token == "" {
-		return usageResult{message: "CodeBuddy (codebuddy-intl) credential not available."}
+		return usageResult{message: fmt.Sprintf("%s credential not available.", label)}
 	}
 	headers := map[string]string{"Authorization": "Bearer " + token}
-	for k, v := range codebuddyIntlHeaders {
+	for k, v := range baseHeaders {
 		headers[k] = v
 	}
-	status, _, out, err := usageDo(ctx, http.MethodPost, "https://www.codebuddy.ai/v2/billing/meter/get-user-resource", headers, []byte("{}"))
+	status, _, out, err := usageDo(ctx, http.MethodPost, endpoint, headers, []byte("{}"))
 	if err != nil {
-		return usageResult{message: fmt.Sprintf("CodeBuddy (codebuddy-intl) error: %v", err)}
+		return usageResult{message: fmt.Sprintf("%s error: %v", label, err)}
 	}
 	if status == 401 || status == 403 {
-		return usageResult{message: "CodeBuddy CN credential invalid or expired."}
+		return usageResult{message: fmt.Sprintf("%s credential invalid or expired.", label)}
 	}
 	if status < 200 || status >= 300 {
-		return usageResult{message: fmt.Sprintf("CodeBuddy CN quota API error (%d).", status)}
+		return usageResult{message: fmt.Sprintf("%s quota API error (%d).", label, status)}
 	}
 	body := usageJSON(out)
 	if body == nil {
-		return usageResult{message: "CodeBuddy (codebuddy-intl) error: invalid JSON"}
+		return usageResult{message: fmt.Sprintf("%s error: invalid JSON", label)}
 	}
 	if code := usageNum(body["code"], -1); code != 0 {
 		msg, _ := body["msg"].(string)
 		if msg == "" {
 			msg = "unknown"
 		}
-		return usageResult{message: fmt.Sprintf("CodeBuddy CN quota error: %s", msg)}
+		return usageResult{message: fmt.Sprintf("%s quota error: %s", label, msg)}
 	}
 	var data map[string]any
 	if d, ok := body["data"].(map[string]any); ok {
@@ -827,7 +852,7 @@ func fetchCodeBuddyIntlUsage(ctx context.Context, accessToken, apiKey string) us
 		accounts = a
 	}
 	if len(accounts) == 0 {
-		return usageResult{message: "CodeBuddy CN connected. No credit package found."}
+		return usageResult{message: fmt.Sprintf("%s connected. No credit package found.", label)}
 	}
 	var refills, bonuses []map[string]any
 	for _, a := range accounts {

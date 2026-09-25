@@ -541,14 +541,23 @@
   })
 
   // Refetch connections when pagination/filter inputs change (skip first run;
-  // the initial load happens in onMount)
+  // the initial load happens in onMount). Quotas for newly-visible cards are
+  // fetched here too — otherwise a card shows "No quota limits tracked" until
+  // the next auto-refresh tick (up to REFRESH_INTERVAL_MS later).
   $effect(() => {
     void page
     void pageSize
     void accountFilter
     void providerFilter
     if (!initialLoadDone) return
-    void fetchConnections(page)
+    void (async () => {
+      const visibleConnections = await fetchConnections(page)
+      quotaErrors = filterQuotaStateByConnections(quotaErrors, visibleConnections)
+      quotaData = filterQuotaStateByConnections(quotaData, visibleConnections)
+      const missing = visibleConnections.filter((conn) => !quotaData[conn.id])
+      await Promise.allSettled(missing.map((conn) => fetchQuota(conn.id, conn.provider)))
+      lastUpdated = new Date()
+    })()
   })
 
   onMount(() => {
